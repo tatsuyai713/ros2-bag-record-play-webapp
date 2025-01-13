@@ -1,0 +1,5 @@
+save_folder: /home/tatsuyai/bag
+duration: '10'
+topics:
+- /test
+- /test2

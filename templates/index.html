@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ROS2 Bag Recorder</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<div class="container mt-5">
+    <h1 class="text-center text-white mb-4">ROS2 Bag Recorder</h1>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Row for Save / Load Config -->
+    <div class="row mb-4">
+        <!-- Save Configuration -->
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header text-white bg-dark">
+                    Save Configuration
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/save_config" id="save-config-form">
+                        <div class="mb-3">
+                            <label for="save_config_name" class="form-label text-white">Configuration Name</label>
+                            <input type="text" class="form-control" id="save_config_name" name="config_name" placeholder="Enter configuration name" required>
+                        </div>
+
+                        <!-- Hidden fields to store main form data -->
+                        <input type="hidden" name="hidden_save_folder" id="hidden_save_folder">
+                        <input type="hidden" name="hidden_duration" id="hidden_duration">
+                        <div id="hidden_topics_container"></div>
+
+                        <button type="button" class="btn btn-primary" onclick="onClickSaveConfig()">Save Configuration</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Load Configuration -->
+        <div class="col-md-6 mt-4 mt-md-0">
+            <div class="card h-100">
+                <div class="card-header text-white bg-dark">
+                    Load Configuration
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/load_config">
+                        <div class="mb-3">
+                            <label for="config_name_dropdown" class="form-label text-white">Select Configuration</label>
+                            <select name="config_name_dropdown" id="config_name_dropdown" class="form-select" required>
+                                <option value="">-- Select Config --</option>
+                                {% for fname in config_files %}
+                                    <option value="{{ fname }}">{{ fname }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-success">Load Configuration</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Form for Recording -->
+    <form method="POST" action="" id="main-config-form">
+        <div class="mb-3">
+            <label for="save_folder" class="form-label text-white">Save Folder</label>
+            <input type="text" class="form-control" id="save_folder" name="save_folder"
+                   placeholder="Enter save folder name"
+                   value="{{ config.save_folder if config else '' }}">
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label text-white">Topics</label>
+            <div class="card p-3 mb-3" style="background-color: #2c2c2c;">
+                <div class="d-flex align-items-center mb-2">
+                    <button class="btn btn-secondary me-2" type="button" id="btn-get-ros2-topics">Get ROS2 Topics</button>
+                    <select id="ros2-topics-select" class="form-select" style="max-width: 300px;">
+                        <option value="">-- No Topics --</option>
+                    </select>
+                    <button class="btn btn-info ms-2" type="button" id="btn-add-selected-topic">Add Selected Topic</button>
+                </div>
+                <small class="text-white">Press "Get ROS2 Topics" to retrieve the list, then choose a topic to add below.</small>
+            </div>
+
+            <div id="topic-fields">
+                {% if config and config.topics %}
+                    {% for topic in config.topics %}
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" name="topics" placeholder="/topicX" value="{{ topic }}">
+                            <button class="btn btn-danger remove-topic" type="button">Remove</button>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="input-group mb-2">
+                        <input type="text" class="form-control" name="topics" placeholder="/topic1">
+                        <button class="btn btn-danger remove-topic" type="button">Remove</button>
+                    </div>
+                {% endif %}
+            </div>
+            <button class="btn btn-primary" type="button" id="add-topic">Add Topic (Manual)</button>
+        </div>
+
+        <div class="mb-3">
+            <label for="duration" class="form-label text-white">Acquisition Time (seconds)</label>
+            <input type="number" class="form-control" id="duration" name="duration" placeholder="Optional"
+                   value="{{ config.duration if config else '' }}">
+        </div>
+    </form>
+
+    <div id="recording-buttons">
+        {% if recording %}
+            <!-- Stop Recording: 別フォーム -->
+            <form method="POST" action="/stop_recording" style="display:inline;">
+                <button type="submit" class="btn btn-danger">Stop Recording</button>
+            </form>
+        {% else %}
+            <!-- Start Recording: JSでメインフォームをsubmit -->
+            <button type="button" class="btn btn-warning" id="btn-start-recording">Start Recording</button>
+        {% endif %}
+    </div>
+    <div class="card mt-4">
+        <div class="card-header text-white bg-dark">
+            Terminal Window
+        </div>
+        <div class="card-body" style="background-color: #2c2c2c; color: #ffffff; height: 300px; overflow-y: auto;" id="terminal-window">
+            <!-- ros2 bag recordの出力をここに表示する -->
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // ========== Existing Code (Topics add/remove, Get ROS2 Topics, etc.) ==========
+
+    document.getElementById('add-topic').addEventListener('click', function() {
+        const container = document.getElementById('topic-fields');
+        const div = document.createElement('div');
+        div.className = 'input-group mb-2';
+        div.innerHTML = `
+            <input type="text" class="form-control" name="topics" placeholder="/topicX">
+            <button class="btn btn-danger remove-topic" type="button">Remove</button>
+        `;
+        container.appendChild(div);
+    });
+
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.classList.contains('remove-topic')) {
+            e.target.parentElement.remove();
+        }
+    });
+
+    document.getElementById('btn-get-ros2-topics').addEventListener('click', async function() {
+        try {
+            const res = await fetch('/api/list_topics');
+            const data = await res.json();
+            const selectEl = document.getElementById('ros2-topics-select');
+            selectEl.innerHTML = ''; // Clear old options
+
+            if (data.topics && data.topics.length > 0) {
+                data.topics.forEach(topic => {
+                    const option = document.createElement('option');
+                    option.value = topic;
+                    option.textContent = topic;
+                    selectEl.appendChild(option);
+                });
+            } else {
+                const option = document.createElement('option');
+                option.value = "";
+                option.textContent = data.error ? 'Error retrieving topics' : 'No Topics Available';
+                selectEl.appendChild(option);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Failed to fetch ROS2 topics");
+        }
+    });
+
+    document.getElementById('btn-add-selected-topic').addEventListener('click', function() {
+        const selectEl = document.getElementById('ros2-topics-select');
+        const selectedVal = selectEl.value;
+        if (!selectedVal) return;
+
+        const container = document.getElementById('topic-fields');
+        const div = document.createElement('div');
+        div.className = 'input-group mb-2';
+        div.innerHTML = `
+            <input type="text" class="form-control" name="topics" placeholder="/topicX" value="${selectedVal}">
+            <button class="btn btn-danger remove-topic" type="button">Remove</button>
+        `;
+        container.appendChild(div);
+    });
+
+
+    // ========== Save Configuration (existing logic) ==========
+
+    function onClickSaveConfig() {
+        const saveFolder = document.getElementById('save_folder').value.trim();
+        const duration = document.getElementById('duration').value.trim();
+        const topicInputs = document.querySelectorAll('#topic-fields input[name="topics"]');
+
+        document.getElementById('hidden_save_folder').value = saveFolder;
+        document.getElementById('hidden_duration').value = duration;
+
+        const hiddenContainer = document.getElementById('hidden_topics_container');
+        hiddenContainer.innerHTML = '';
+
+        topicInputs.forEach(inp => {
+            const val = inp.value.trim();
+            if (val) {
+                const hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = 'hidden_topics';
+                hidden.value = val;
+                hiddenContainer.appendChild(hidden);
+            }
+        });
+
+        document.getElementById('save-config-form').submit();
+    }
+
+    // ========== Start Recording ボタン ==========
+    const btnStartRecording = document.getElementById('btn-start-recording');
+    if (btnStartRecording) {
+        btnStartRecording.addEventListener('click', () => {
+            const mainForm = document.getElementById('main-config-form');
+            mainForm.action = "/start_recording";
+            mainForm.method = "POST";
+            mainForm.submit();
+        });
+    }
+
+    setInterval(async () => {
+        try {
+            const res = await fetch('/check_recording');
+            const data = await res.json();
+            const recording = data.recording; // true or false
+            const container = document.getElementById('recording-buttons');
+            if (!container) return;
+
+            if (recording) {
+                if (!container.querySelector('form[action="/stop_recording"]')) {
+                    container.innerHTML = `
+                      <form method="POST" action="/stop_recording" style="display:inline;">
+                        <button type="submit" class="btn btn-danger">Stop Recording</button>
+                      </form>
+                    `;
+                }
+            } else {
+                if (!container.querySelector('#btn-start-recording')) {
+                    container.innerHTML = `
+                      <button type="button" class="btn btn-warning" id="btn-start-recording">Start Recording</button>
+                    `;
+                    const newBtn = document.getElementById('btn-start-recording');
+                    newBtn.addEventListener('click', () => {
+                        const mainForm = document.getElementById('main-config-form');
+                        mainForm.action = "/start_recording";
+                        mainForm.method = "POST";
+                        mainForm.submit();
+                    });
+                }
+            }
+        } catch (err) {
+            console.error("Error in check_recording polling:", err);
+        }
+    }, 3000); // 3秒おき
+
+    function updateTerminalWindow() {
+        fetch('/record_output')
+            .then(res => res.json())
+            .then(data => {
+                const logs = data.logs || [];
+                const terminalEl = document.getElementById('terminal-window');
+                terminalEl.textContent = logs.join('\n');
+                terminalEl.scrollTop = terminalEl.scrollHeight;
+            })
+            .catch(err => console.error('Failed to fetch record_output:', err));
+    }
+
+    setInterval(updateTerminalWindow, 2000);
+
+    updateTerminalWindow();
+</script>
+</body>
+</html>
