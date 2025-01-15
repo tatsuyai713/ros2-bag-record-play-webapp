@@ -79,10 +79,10 @@
         <div class="mb-3">
             <label for="save_folder" class="form-label text-white">Save Folder</label>
             <input type="text" class="form-control" id="save_folder" name="save_folder"
-                   placeholder="Enter save folder name"
-                   value="{{ config.save_folder if config else '' }}">
+                   placeholder="Enter folder name (within /home/{{ current_user }}/)"
+                   value="{{ config.save_folder if config else '' }}" required>
+            <small class="text-white">Folder name should be within /home/{{ current_user }}/</small>
         </div>
-
         <div class="mb-3">
             <label class="form-label text-white">Topics</label>
             <div class="card p-3 mb-3" style="background-color: #2c2c2c;">
