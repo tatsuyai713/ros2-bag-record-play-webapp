@@ -192,13 +192,20 @@ def load_config():
 
 @app.route('/start_recording', methods=['POST'])
 def start_recording_route():
+    current_user = os.getlogin() 
+    base_folder = f'/home/{current_user}/'
     save_folder = request.form.get('save_folder', '').strip()
-    duration = request.form.get('duration', '').strip()
-    topics = request.form.getlist('topics')
-
+    
     if not save_folder:
         flash("Save folder is required.", "error")
         return redirect(url_for('index'))
+
+    if not save_folder.startswith(base_folder):
+        flash("Save folder must be within /home/{}/.".format(current_user), "error")
+        return redirect(url_for('index'))
+
+    duration = request.form.get('duration', '').strip()
+    topics = request.form.getlist('topics')
 
     if not topics:
         flash("At least one topic is required.", "error")
