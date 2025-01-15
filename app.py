@@ -6,6 +6,7 @@ from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory, jsonify
 from threading import Thread, Lock
 import time
+import pwd
 
 app = Flask(__name__)
 app.secret_key = 'your_secure_secret_key'  
@@ -121,6 +122,7 @@ def save_config_to_yaml(config_name: str, config_data: dict):
 
 @app.route('/', methods=['GET'])
 def index():
+    current_user = pwd.getpwuid(os.getuid()).pw_name
     config = session.get('config', None)
 
     config_files = []
@@ -133,7 +135,8 @@ def index():
     return render_template('index.html',
                            config=config,
                            config_files=config_files,
-                           recording=is_recording())
+                           recording=is_recording(),
+                           current_user=current_user)
 
 
 @app.route('/save_config', methods=['POST'])
@@ -192,20 +195,23 @@ def load_config():
 
 @app.route('/start_recording', methods=['POST'])
 def start_recording_route():
-    current_user = os.getlogin() 
-    base_folder = f'/home/{current_user}/'
+    current_user = pwd.getpwuid(os.getuid()).pw_name  # ???????????
+    base_folder = f'/home/{current_user}/'  # ??????????
     save_folder = request.form.get('save_folder', '').strip()
-    
+
     if not save_folder:
         flash("Save folder is required.", "error")
         return redirect(url_for('index'))
 
     if not save_folder.startswith(base_folder):
-        flash("Save folder must be within /home/{}/.".format(current_user), "error")
+        flash(f"Save folder must be within {base_folder}.", "error")
         return redirect(url_for('index'))
-
     duration = request.form.get('duration', '').strip()
     topics = request.form.getlist('topics')
+
+    if not save_folder:
+        flash("Save folder is required.", "error")
+        return redirect(url_for('index'))
 
     if not topics:
         flash("At least one topic is required.", "error")
