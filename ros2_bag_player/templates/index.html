@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ROS 2 Bag Player - Keep Subfolder</title>
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  >
+</head>
+<body class="bg-dark text-light">
+<div class="container mt-5">
+  <h1 class="text-center mb-4">ROS 2 Bag Player</h1>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div
+          class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show"
+          role="alert"
+        >
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- Main Form -->
+  <form method="POST" action="{{ url_for('start_playing') }}" id="main-form">
+    <div class="mb-3">
+      <label for="base_path" class="form-label">Bag Folder Path</label>
+      <input
+        type="text"
+        class="form-control"
+        id="base_path"
+        name="base_path"
+        placeholder="/home/user/bags"
+        value="{{ form_data['base_path'] }}"
+      >
+      <small class="text-muted">Type the absolute path where ROS bag folders exist.</small>
+    </div>
+
+    <div class="mb-3">
+      <button type="button" class="btn btn-info" id="btn-list-subfolders">List bags</button>
+      <small class="ms-2 text-muted">Fetch directories under the parent folder.</small>
+    </div>
+
+    <!-- Subfolder -->
+    <div class="mb-3">
+      <label for="subfolder" class="form-label">Bag File to Play</label>
+      <select name="subfolder" id="subfolder" class="form-select">
+        <option value="">-- No Subfolder Selected --</option>
+      </select>
+      <small class="text-muted">Choose the folder containing the bag files.</small>
+    </div>
+
+    <!-- Playback options -->
+    <div class="mb-3">
+      <label for="rate" class="form-label">Playback Rate</label>
+      <input
+        type="text"
+        class="form-control"
+        id="rate"
+        name="rate"
+        placeholder="e.g. 1.0, 2.0"
+        value="{{ form_data['rate'] }}"
+      >
+    </div>
+    <div class="mb-3">
+      <label for="start_time" class="form-label">Start Offset (seconds)</label>
+      <input
+        type="text"
+        class="form-control"
+        id="start_time"
+        name="start_time"
+        placeholder="e.g. 5"
+        value="{{ form_data['start_time'] }}"
+      >
+    </div>
+    <div class="mb-3">
+      <label for="end_time" class="form-label">Duration (seconds)</label>
+      <input
+        type="text"
+        class="form-control"
+        id="end_time"
+        name="end_time"
+        placeholder="e.g. 10"
+        value="{{ form_data['end_time'] }}"
+      >
+    </div>
+    <div class="mb-3">
+      <label for="other_options" class="form-label">Other Options</label>
+      <input
+        type="text"
+        class="form-control"
+        id="other_options"
+        name="other_options"
+        placeholder="e.g. --loop"
+        value="{{ form_data['other_options'] }}"
+      >
+    </div>
+
+    <div id="play-buttons" class="mb-3">
+      <button type="submit" class="btn btn-primary" id="btn-start-playing">
+        Start Playback
+      </button>
+    </div>
+  </form>
+
+  <hr/>
+
+  <!-- Console Output -->
+  <div class="card">
+    <div class="card-header bg-secondary text-white">Console Output</div>
+    <div
+      class="card-body bg-dark text-light"
+      id="terminal-window"
+      style="height:300px; overflow-y:auto;"
+    ></div>
+  </div>
+</div>
+
+<script
+  src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js">
+</script>
+
+<script>
+  /**
+   * 1) On page load, if base_path is not empty, we can automatically fetch subfolders
+   *    Then select the previously chosen subfolder if it still exists.
+   */
+  window.addEventListener('DOMContentLoaded', (event) => {
+    const basePath = document.getElementById('base_path').value.trim();
+    if (basePath) {
+      listSubfolders(basePath)
+        .catch(e => console.error("Initial subfolder load failed:", e));
+    }
+  });
+
+  /**
+   * 2) "List Subfolders" button logic
+   */
+  document.getElementById('btn-list-subfolders').addEventListener('click', async () => {
+    const basePath = document.getElementById('base_path').value.trim();
+    if (!basePath) {
+      alert("Please enter the parent folder path first.");
+      return;
+    }
+    await listSubfolders(basePath);
+  });
+
+  /**
+   * 3) Actual function that fetches subfolders from the server and populates <select>.
+   *    Also tries to re-select the 'subfolder' previously chosen (from session).
+   */
+  async function listSubfolders(basePath) {
+    const res = await fetch('{{ url_for("list_subfolders") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base_path: basePath })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert("Error listing subfolders: " + (data.error || 'Unknown error'));
+      return;
+    }
+    const selectEl = document.getElementById('subfolder');
+    // 現在の選択肢を保持 (sessionのサブフォルダ)
+    const savedSubfolder = "{{ form_data['subfolder'] }}".trim();
+
+    selectEl.innerHTML = '<option value="">-- No Subfolder Selected --</option>';
+    data.subfolders.forEach(sf => {
+      const opt = document.createElement('option');
+      opt.value = sf;
+      opt.textContent = sf;
+      selectEl.appendChild(opt);
+    });
+
+    // 再度 session のサブフォルダを選択
+    if (savedSubfolder && data.subfolders.includes(savedSubfolder)) {
+      selectEl.value = savedSubfolder;
+    }
+  }
+
+  /**
+   * 4) Poll playback state every 3s for toggling Start/Stop button
+   */
+  setInterval(async () => {
+    try {
+      const res = await fetch('{{ url_for("check_playing") }}');
+      const data = await res.json();
+      const playing = data.playing;
+      const container = document.getElementById('play-buttons');
+      if (!container) return;
+
+      if (playing) {
+        if (!container.querySelector('form[action="{{ url_for("stop_playing") }}"]')) {
+          container.innerHTML = `
+            <form method="POST" action="{{ url_for('stop_playing') }}" style="display:inline;">
+              <button type="submit" class="btn btn-danger">Stop Playback</button>
+            </form>
+          `;
+        }
+      } else {
+        if (!container.querySelector('#btn-start-playing')) {
+          container.innerHTML = `
+            <button type="submit" class="btn btn-primary" id="btn-start-playing">
+              Start Playback
+            </button>
+          `;
+        }
+      }
+    } catch (err) {
+      console.error("Error checking playback state:", err);
+    }
+  }, 3000);
+
+  /**
+   * 5) Poll console output every 2s
+   */
+  function updateTerminalWindow() {
+    fetch('{{ url_for("play_output") }}')
+      .then(res => res.json())
+      .then(data => {
+        const logs = data.logs || [];
+        const terminalEl = document.getElementById('terminal-window');
+        terminalEl.innerHTML = logs.join('');
+        terminalEl.scrollTop = terminalEl.scrollHeight;
+      })
+      .catch(err => console.error("Failed to fetch play_output:", err));
+  }
+  setInterval(updateTerminalWindow, 2000);
+  updateTerminalWindow();
+</script>
+</body>
+</html>
