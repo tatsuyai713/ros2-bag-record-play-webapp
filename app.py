@@ -4,6 +4,7 @@ import yaml
 import subprocess
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory, jsonify
+from markupsafe import Markup
 from threading import Thread, Lock
 import time
 import pwd
@@ -38,7 +39,7 @@ def read_process_output(proc):
             if not line:
                 break
             with output_buffer_lock:
-                record_output_buffer.append(line.rstrip('\n'))
+                record_output_buffer.append(line)
 
     t_out = Thread(target=_reader, args=(proc.stdout,), daemon=True)
     t_out.start()
@@ -263,8 +264,8 @@ def list_ros2_topics():
 def record_output():
     with output_buffer_lock:
         logs = record_output_buffer[:]
-    return jsonify({"logs": logs})
-
+    formatted_logs = [log.replace('\n', '<br>') for log in logs]
+    return jsonify({"logs": formatted_logs})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
