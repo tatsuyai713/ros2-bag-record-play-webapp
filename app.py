@@ -265,7 +265,7 @@ def record_output():
     with output_buffer_lock:
         logs = record_output_buffer[:]
     filtered_logs = [log for log in logs if "stdin is not a terminal device. Keyboard handling disabled." not in log]
-    formatted_logs = [log.replace('\n', '<br>') for log in logs]
+    formatted_logs = [log.replace('\n', '<br>') for log in filtered_logs]
     return jsonify({"logs": formatted_logs})
 
 if __name__ == '__main__':
