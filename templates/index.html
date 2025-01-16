@@ -289,7 +289,7 @@
             .then(data => {
                 const logs = data.logs || [];
                 const terminalEl = document.getElementById('terminal-window');
-                terminalEl.textContent = logs.join('\n');
+                terminalEl.innerHTML = logs.join('');
                 terminalEl.scrollTop = terminalEl.scrollHeight;
             })
             .catch(err => console.error('Failed to fetch record_output:', err));
